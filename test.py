@@ -24,11 +24,20 @@ if __name__ == '__main__':
         name='densemodel',
     )
     tf.random.set_seed(666)
+
+    def my_init(shape, dtype = None):
+        weight = densemodel.weights[0]
+        return weight
+
+    def my_init1(shape, dtype = None):
+        weight = densemodel.weights[0]
+        return weight
+
     copymodel = keras.Sequential(
         [
             keras.Input(shape=(28, 28, 1)),
             layers.Flatten(),
-            layers.Dense(1024),
+            layers.Dense(1024, kernel_initializer=my_init),
             layers.Dense(1024),
             layers.Dense(512),
             layers.Dense(128),
@@ -37,8 +46,9 @@ if __name__ == '__main__':
         ],
         name='copymodel',
     )
+    print(copymodel)
     # 保证两个模型权重初始化相同，并且不能设置为 0
-
+    quit(0)
     optimizer = Adam(learning_rate=learning_rate)
     loss_fn = keras.losses.categorical_crossentropy
 
@@ -53,25 +63,25 @@ if __name__ == '__main__':
         for i in range(len(new_grad)):
             if i < 2:
                 new_grad.append((grads[i] * learning_rate - densemodel.trainable_weights[i] +
-                                 copymodel.trainable_weights[i]) / learning_rate)
+                                 model_for_pruning.trainable_weights[i]) / learning_rate)
             elif i < 6:
                 if i < 4:
                     new_weight_train = tf.tile(densemodel.trainable_weights[i], [1, 2])
                     new_grad0_for_dense1024 = tf.tile(grads[i], [1, 2])
                     new_grad0_for_dense1024 = (new_grad0_for_dense1024 * learning_rate - alpha * new_grad0_for_dense1024
-                                               * copymodel.trainable_weights[i] * learning_rate) / (
+                                               * model_for_pruning.trainable_weights[i] * learning_rate) / (
                                                       new_weight_train * learning_rate - alpha *
                                                       new_grad0_for_dense1024 * learning_rate * learning_rate)
                     new_grad.append(new_grad0_for_dense1024)
                 else:
                     new_grad.append((grads[i - 2] * learning_rate - densemodel.trainable_weights[i] +
-                                     copymodel.trainable_weights[i - 2]) / learning_rate)
+                                     model_for_pruning.trainable_weights[i - 2]) / learning_rate)
             else:
                 new_grad.append((grads[i - 2] * learning_rate - densemodel.trainable_weights[i] +
-                                 copymodel.trainable_weights[i - 2]) / learning_rate)
+                                 model_for_pruning.trainable_weights[i - 2]) / learning_rate)
             grads[i] = 0.00001 * grads[i]
         optimizer.apply_gradients(zip(grads, densemodel.trainable_weights))
-        optimizer.apply_gradients(zip(new_grad, copymodel.trainable_weights))  # 优化器利用梯度训练copy模型
+        optimizer.apply_gradients(zip(new_grad, model_for_pruning.trainable_weights))  # 优化器利用梯度训练copy模型
         del new_grad
         return loss
 
@@ -92,7 +102,7 @@ if __name__ == '__main__':
         sum = 0
         for _, test_data in enumerate(dataset):
             real_images, labels_in = test_data
-            predictions_in = copymodel(real_images)
+            predictions_in = model_for_pruning(real_images)
             predict += np.sum(np.equal(np.argmax(predictions_in.numpy(), 1), np.argmax(labels_in, 1)))
             sum += len(real_images)
         print(predict / sum)
@@ -114,6 +124,19 @@ if __name__ == '__main__':
     epochs = 10  # In practice you need at least 20 epochs to generate nice digits.
     save_dir = "./"
 
+    import tensorflow_model_optimization as tfmot
+
+    prune_low_magnitude = tfmot.sparsity.keras.prune_low_magnitude
+
+    pruning_params = {
+        'pruning_schedule': tfmot.sparsity.keras.PolynomialDecay(initial_sparsity=0.50,
+                                                                 final_sparsity=0.80,
+                                                                 begin_step=0,
+                                                                 end_step=200000)
+    }
+
+    model_for_pruning = prune_low_magnitude(copymodel, **pruning_params)
+    print(model_for_pruning.summary())
     for epoch in range(epochs):
         print("\nStart epoch", epoch)
         for step, train_data in enumerate(train_dataset):

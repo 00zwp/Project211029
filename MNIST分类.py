@@ -6,7 +6,7 @@ from keras.utils import np_utils
 import keras
 import os
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 np.random.seed(666)
 
 if __name__ == "__main__":
@@ -23,20 +23,23 @@ if __name__ == "__main__":
     def model():
         model =Sequential()
         model.add(Flatten())
-        model.add(Dense(1024,input_shape=(28,28,1)))
+        model.add(Dense(2048,input_shape=(28,28,1)))
+        model.add(Activation('relu'))
         model.add(Dense(512))
-        model.add(Dense(128))
+        model.add(Activation('relu'))
         model.add(Dense(10))
         model.add(Activation('softmax'))
         return model
-    model = model()
+    model1 = model()
+    model1.compile(loss='categorical_crossentropy',optimizer='adam',metrics=['accuracy'])
+    model1.fit(trainX, trainY, batch_size=4096, epochs=5,verbose=1, validation_data=(testX, testY))
+    score = model1.evaluate(testX, testY, verbose=0)
+    print('Test loss:', score[0])
+    print('Test accuracy:', score[1])
 
-    model.compile(loss='categorical_crossentropy',optimizer='adadelta',metrics=['accuracy'])
-    # model.fit(trainX, trainY, batch_size=256, epochs=12,verbose=1, validation_data=(testX, testY))
-
-    model =  keras.models.load_model('./Dense_4/model')
-    # print(model.summary())
-    # 模型测试
-    score = model.evaluate(testX, testY, verbose=0)
+    model2 = model()
+    model2.compile(loss='categorical_crossentropy',optimizer='adam',metrics=['accuracy'])
+    model2.fit(trainX, trainY, batch_size=4096, epochs=5,verbose=1, validation_data=(testX, testY))
+    score = model2.evaluate(testX, testY, verbose=0)
     print('Test loss:', score[0])
     print('Test accuracy:', score[1])
